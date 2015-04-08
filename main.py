@@ -94,7 +94,7 @@ def learnMissingValuePredicate(data_error_tuple):
 	for k in predicates:
 		result_tuple.append(
 							(   k[0],
-							 	k[1],
+							 	lambda data, col: (data[col] == k[1]),
 							 		np.mean(predicates[(k[0],
 							 					 	k[1])]
 							 			)
@@ -167,6 +167,7 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 									  gradient):
 	N = data_matrix.shape[0]
 	p = data_matrix.shape[1]
+	num_errors = 0.0
 
 	#stupid hack for now
 	feature_indices = list(set(range(0,p)).difference(set([obscol])))
@@ -175,24 +176,35 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 	for i in range(0,N):
 		estimated_feature_change = np.zeros((p-2,1))
 		estimated_obs_change = 0
+		
+		erroneous = 0
 
 		for j in cleaning_result_tuple:
-			if data_matrix[i,j[0]] == j[1]:
+			if j[1](data_matrix[i,:],j[0]):
 				if j[0] != obscol:
 					estimated_feature_change[feature_indices.index(j[0])] = j[2]
 				else:
 					estimated_obs_change = j[2]
 
-		importance_weights[i] = abs(importance_weights[i] + np.dot(gradient[i,0:(p-2)],estimated_feature_change) + gradient[i,(p-1)]*estimated_obs_change)
+				erroneous = 1.0
+
+		num_errors = num_errors + erroneous
+		importance_weights[i] = erroneous*abs(importance_weights[i] + np.dot(gradient[i,0:(p-2)],estimated_feature_change) + gradient[i,(p-1)]*estimated_obs_change)
 
 	normalization = np.sum(importance_weights)
-	standard_normalization = 1.0/N
+	standard_normalization = 1.0/max(num_errors,1.0)
 
 	weight_matrix = np.zeros((N,N))
 	sampling_probs = np.zeros((N,1))
 	for i in range(0,N):
-		weight_matrix[i,i] = standard_normalization/(importance_weights[i] / normalization)
-		sampling_probs[i] = (importance_weights[i] / normalization)
+		if importance_weights[i] != 0:
+			weight_matrix[i,i] = standard_normalization/(importance_weights[i] / normalization)
+			sampling_probs[i] = (importance_weights[i] / normalization)
+
+		if num_errors == 0:
+			weight_matrix[i,i] = 1.0
+			sampling_probs[i] = 1.0/N
+
 
 	return (weight_matrix, sampling_probs)
 
@@ -207,12 +219,50 @@ def getNextTrainingBatch(data_matrix_es_tuple,k,sampling_probs,population):
 			errorspec[i] = data_matrix_es_tuple[1][i]
 	return (data_matrix_es_tuple[0][selectedIndex,:], errorspec)
 
+"""
+This cleans the next training batch
+"""
+def cleanNextTrainingBatch(data_matrix_es_tuple,k,sampling_probs,population):
+	selectedIndex = np.random.choice(population, k, False, np.array(sampling_probs)[:,0])
+	
+	cost = 0.0
+	actual_cleaned = 0.0
+
+	errorspec = data_matrix_es_tuple[1]
+	for i in selectedIndex:
+		if i in data_matrix_es_tuple[1]:			
+			for j in data_matrix_es_tuple[1][i]:
+				if j[0] == 'missing':
+					data_matrix_es_tuple[0][i,j[1]] = j[3]
+
+			del errorspec[i]
+
+			actual_cleaned = actual_cleaned + 1
+
+		cost = cost + 1
+	return (data_matrix_es_tuple[0], errorspec, cost, actual_cleaned)	
+
+"""
+This normalizes the weight matix for re-estimation after cleaning
+"""
+def normalizeWeightMatrix(weight_matrix, cleaned):
+	N = weight_matrix.shape[0] + 0.0
+	K = len(np.flatnonzero(weight_matrix)) + 0.0
+	for i in range(0,N):
+		if weight_matrix[i,i] == 0:
+			weight_matrix[i,i] = 1
+		else:
+			weight_matrix[i,i] = K/cleaned*weight_matrix[i,i]
+
+
+
 raw = loadHousingDataSet()
-dirty = makeMissingValues(raw, [1,13], -1, 0.1)
+dirty = makeMissingValues(raw, [1,13,0], -1, 0.1)
 result = learnMissingValuePredicate(dirty)
-print result
+
 data = featuresObservationsSplit(dirty[0],13)
 sol = trainConvexLossModel(data[0],data[1])
 imp = getImportanceSamplingDistribution(result[0],dirty[0], 13, sol[1], sol[2])
-data = getNextTrainingBatch(dirty,100,imp[1],range(0,506))
-print learnMissingValuePredicate(data)
+print np.sum(imp[1])
+data = cleanNextTrainingBatch(dirty,30,imp[1],range(0,506))
+print data
