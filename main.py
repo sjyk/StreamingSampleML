@@ -189,17 +189,30 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 	standard_normalization = 1.0/N
 
 	weight_matrix = np.zeros((N,N))
+	sampling_probs = np.zeros((N,1))
 	for i in range(0,N):
 		weight_matrix[i,i] = standard_normalization/(importance_weights[i] / normalization)
+		sampling_probs[i] = (importance_weights[i] / normalization)
 
-	return weight_matrix
+	return (weight_matrix, sampling_probs)
 
-
+"""
+This gets the next batch given an importance sampling distribution
+"""
+def getNextTrainingBatch(data_matrix_es_tuple,k,sampling_probs,population):
+	selectedIndex = np.random.choice(population, k, False, np.array(sampling_probs)[:,0])
+	errorspec = {}
+	for i in selectedIndex:
+		if i in data_matrix_es_tuple[1]:
+			errorspec[i] = data_matrix_es_tuple[1][i]
+	return (data_matrix_es_tuple[0][selectedIndex,:], errorspec)
 
 raw = loadHousingDataSet()
 dirty = makeMissingValues(raw, [1,13], -1, 0.1)
 result = learnMissingValuePredicate(dirty)
+print result
 data = featuresObservationsSplit(dirty[0],13)
 sol = trainConvexLossModel(data[0],data[1])
-print sol
-print getImportanceSamplingDistribution(result[0],dirty[0], 13, sol[1], sol[2])
+imp = getImportanceSamplingDistribution(result[0],dirty[0], 13, sol[1], sol[2])
+data = getNextTrainingBatch(dirty,100,imp[1],range(0,506))
+print learnMissingValuePredicate(data)
