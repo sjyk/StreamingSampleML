@@ -87,6 +87,7 @@ using numpy's slicing feature
 def featuresObservationsSplit(data_matrix, obscol):
 	size = data_matrix.shape
 	feature_indices = set(range(0,size[1])).difference(set([obscol]))
+	#print feature_indices
 	return (data_matrix[:,list(feature_indices)], data_matrix[:,obscol])
 
 """
@@ -148,7 +149,7 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 
 	importance_weights = loss
 	for i in range(0,N):
-		estimated_feature_change = np.zeros((p-2,1))
+		estimated_feature_change = np.zeros((p-1,1))
 		estimated_obs_change = 0
 		
 		erroneous = 0
@@ -163,7 +164,7 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 				erroneous = 1.0
 
 		num_errors = num_errors + erroneous
-		importance_weights[i] = erroneous*abs(importance_weights[i] + np.dot(gradient[i,0:(p-2)],estimated_feature_change) + gradient[i,(p-1)]*estimated_obs_change)
+		importance_weights[i] = erroneous*abs(importance_weights[i] + np.dot(gradient[i,0:(p-1)],estimated_feature_change) + gradient[i,p-1]*estimated_obs_change)
 
 	normalization = np.sum(importance_weights)
 	standard_normalization = 1.0/max(num_errors,1.0)
@@ -172,7 +173,7 @@ def getImportanceSamplingDistribution(cleaning_result_tuple,
 	sampling_probs = np.zeros((N,1))
 	for i in range(0,N):
 		if importance_weights[i] != 0 and not force_uniform:
-			weight_matrix[i,i] = importance_weights[i] / normalization
+			weight_matrix[i,i] = (1.0/num_errors) / (importance_weights[i] / normalization)
 			sampling_probs[i] = (importance_weights[i] / normalization)
 
 		if importance_weights[i] != 0 and force_uniform:
@@ -221,18 +222,20 @@ def cleanNextTrainingBatch(data_matrix_es_tuple,k,sampling_probs,population):
 
 	print cost,'examples looked at.',actual_cleaned, " examples cleaned"
 
-	return (data_matrix_es_tuple[0], errorspec, cost, actual_cleaned)	
+	return (data_matrix_es_tuple[0], errorspec, cost, actual_cleaned, selectedIndex)	
 
 """
 This normalizes the weight matix for re-estimation after cleaning
 """
-def normalizeWeightMatrix(weight_matrix, cleaned):
+def normalizeWeightMatrix(weight_matrix, cleaned, selectedIndex):
 	N = weight_matrix.shape[0]
 	K = len(np.flatnonzero(weight_matrix)) + 0.0
 	for i in range(0,N):
 		if weight_matrix[i,i] == 0:
-			weight_matrix[i,i] = 1
+			weight_matrix[i,i] = 1.0
+		elif i not in selectedIndex:
+			weight_matrix[i,i] = 0.0
 		else:
-			weight_matrix[i,i] = K/cleaned*weight_matrix[i,i]
+			weight_matrix[i,i] = K/(len(selectedIndex)+0.0)*weight_matrix[i,i]
 			
 	return weight_matrix

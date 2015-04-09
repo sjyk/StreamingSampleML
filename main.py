@@ -3,6 +3,10 @@
 import experiment1
 
 #Housing data, assuming an oracle, non-adaptive
-#experiment1.experiment1aResults()
+experiment1.experiment1aResults()
 
-print experiment1.experiment1bResults()
+#Housing data, assuming an oracle, adaptive
+#experiment1.experiment1bResults()
+
+#Eeg data, assuming oracle, non-adaptive
+#print experiment1.experiment1cResults()
